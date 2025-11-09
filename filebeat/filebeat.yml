@@ -8,6 +8,7 @@ filebeat.inputs:
     labels:
       client_code: ${CLIENT_CODE:00000}
       installation_seq: ${INSTALLATION_SEQ:000}
+      installation_uid: ${INSTALLATION_UID:unknown}
   
   # Configuração para juntar os Stack Traces de Java
   multiline:

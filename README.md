@@ -23,11 +23,19 @@ log-generator → Filebeat → Logstash (ingest) → Kafka → Logstash (sink) �
 
 ## Como Executar
 
+1. Suba a stack central (Kafka, Logstash, Elasticsearch, Kibana):
+
 ```bash
-docker compose up -d
+docker compose up -d zookeeper kafka logstash-ingest logstash-sink elasticsearch kibana
 ```
 
-Aguarde alguns segundos até que Elasticsearch e Kibana finalizem o bootstrap.
+2. Ative os clientes simulados desejados (cada perfil representa um par `log-generator`+`filebeat`):
+
+```bash
+docker compose --profile client-12345 --profile client-67890 up -d --build
+```
+
+Aguarde alguns segundos até que Elasticsearch e Kibana finalizem o bootstrap e que os clientes comecem a gerar eventos.
 
 ### Acessos
 
@@ -43,6 +51,15 @@ Aguarde alguns segundos até que Elasticsearch e Kibana finalizem o bootstrap.
 | [filebeat/](filebeat/) | Configuração do Filebeat com multiline e saída Logstash. |
 | [logstash-ingest/](logstash-ingest/) | Pipeline Logstash que publica no Kafka. |
 | [logstash-sink/](logstash-sink/) | Pipeline Logstash que consome do Kafka e envia ao Elasticsearch. |
+
+## Clientes simulados
+
+- Perfil `client-12345`: `CLIENT_CODE=12345`, `INSTALLATION_SEQ=001`, `INSTALLATION_UID=client-12345-001`.
+- Perfil `client-67890`: `CLIENT_CODE=67890`, `INSTALLATION_SEQ=002`, `INSTALLATION_UID=client-67890-002`.
+- Cada cliente monta volumes dedicados (`log-data-<id>`, `filebeat-data-<id>`) e compartilha a mesma rede/cluster central.
+- Para adicionar novos clientes, replique os serviços no `docker-compose.yml`, alterando envs, volumes e profiles (ex.: `client-ABCDE`).
+
+Os eventos publicados carregam os campos `labels.client_code`, `labels.installation_seq` e `labels.installation_uid`, permitindo filtrar tanto por identificadores mutáveis quanto pelo identificador estável da instalação no Kibana.
 
 ## Encerrando
 

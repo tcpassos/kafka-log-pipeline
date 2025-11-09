@@ -1,39 +1,69 @@
 version: '3.8'
 
-x-client-identity: &client-identity
-  CLIENT_CODE: "12345"
-  INSTALLATION_SEQ: "000"
+x-log-generator-base: &log-generator-base
+  build: ./log-generator
+  networks:
+    - log-pipeline
+
+x-filebeat-base: &filebeat-base
+  image: docker.elastic.co/beats/filebeat:8.11.1
+  user: root # Necessário para ler arquivos de config montados
+  networks:
+    - log-pipeline
+  depends_on:
+    - logstash-ingest
+  command: filebeat -e --strict.perms=false # Desabilita checagem de permissões
 
 services:
   # -----------------------------------------------
   # ZONA 1: GERAÇÃO E COLETA DE LOGS
   # -----------------------------------------------
 
-  # App Java Mockado que gera logs
-  log-generator:
-    build: ./log-generator
+  # Cliente 12345-001
+  log-generator-12345:
+    <<: *log-generator-base
     volumes:
-      - log-data:/var/log/app
-    networks:
-      - log-pipeline
+      - log-data-12345:/var/log/app
     environment:
-      <<: *client-identity
+      CLIENT_CODE: "12345"
+      INSTALLATION_SEQ: "001"
+      INSTALLATION_UID: "client-12345-001"
+    profiles: ["client-12345"]
 
-  # Filebeat que monitora os logs do gerador
-  filebeat:
-    image: docker.elastic.co/beats/filebeat:8.11.1
-    user: root # Necessário para ler arquivos de config montados
+  filebeat-12345:
+    <<: *filebeat-base
     volumes:
       - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
-      - log-data:/var/log/app:ro # Monta os logs do gerador (somente leitura)
-      - filebeat-data:/usr/share/filebeat/data
-    networks:
-      - log-pipeline
-    depends_on:
-      - logstash-ingest
+      - log-data-12345:/var/log/app:ro
+      - filebeat-data-12345:/usr/share/filebeat/data
     environment:
-      <<: *client-identity
-    command: filebeat -e --strict.perms=false # Desabilita checagem de permissões
+      CLIENT_CODE: "12345"
+      INSTALLATION_SEQ: "001"
+      INSTALLATION_UID: "client-12345-001"
+    profiles: ["client-12345"]
+
+  # Cliente 67890-002
+  log-generator-67890:
+    <<: *log-generator-base
+    volumes:
+      - log-data-67890:/var/log/app
+    environment:
+      CLIENT_CODE: "67890"
+      INSTALLATION_SEQ: "002"
+      INSTALLATION_UID: "client-67890-002"
+    profiles: ["client-67890"]
+
+  filebeat-67890:
+    <<: *filebeat-base
+    volumes:
+      - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - log-data-67890:/var/log/app:ro
+      - filebeat-data-67890:/usr/share/filebeat/data
+    environment:
+      CLIENT_CODE: "67890"
+      INSTALLATION_SEQ: "002"
+      INSTALLATION_UID: "client-67890-002"
+    profiles: ["client-67890"]
 
   # -----------------------------------------------
   # ZONA 2: PROCESSAMENTO E BUFFER
@@ -132,8 +162,10 @@ networks:
 
 # Volumes para persistir dados (logs, dados do kafka, dados do elastic)
 volumes:
-  log-data:
-  filebeat-data:
+  log-data-12345:
+  filebeat-data-12345:
+  log-data-67890:
+  filebeat-data-67890:
   zk-data:
   kafka-data:
   es-data:
