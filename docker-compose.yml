@@ -1,5 +1,9 @@
 version: '3.8'
 
+x-client-identity: &client-identity
+  CLIENT_CODE: "12345"
+  INSTALLATION_SEQ: "000"
+
 services:
   # -----------------------------------------------
   # ZONA 1: GERAÇÃO E COLETA DE LOGS
@@ -12,6 +16,8 @@ services:
       - log-data:/var/log/app
     networks:
       - log-pipeline
+    environment:
+      <<: *client-identity
 
   # Filebeat que monitora os logs do gerador
   filebeat:
@@ -25,6 +31,8 @@ services:
       - log-pipeline
     depends_on:
       - logstash-ingest
+    environment:
+      <<: *client-identity
     command: filebeat -e --strict.perms=false # Desabilita checagem de permissões
 
   # -----------------------------------------------
