@@ -1,0 +1,131 @@
+version: '3.8'
+
+services:
+  # -----------------------------------------------
+  # ZONA 1: GERAÇÃO E COLETA DE LOGS
+  # -----------------------------------------------
+
+  # App Java Mockado que gera logs
+  log-generator:
+    build: ./log-generator
+    volumes:
+      - log-data:/var/log/app
+    networks:
+      - log-pipeline
+
+  # Filebeat que monitora os logs do gerador
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.11.1
+    user: root # Necessário para ler arquivos de config montados
+    volumes:
+      - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - log-data:/var/log/app:ro # Monta os logs do gerador (somente leitura)
+      - filebeat-data:/usr/share/filebeat/data
+    networks:
+      - log-pipeline
+    depends_on:
+      - logstash-ingest
+    command: filebeat -e --strict.perms=false # Desabilita checagem de permissões
+
+  # -----------------------------------------------
+  # ZONA 2: PROCESSAMENTO E BUFFER
+  # -----------------------------------------------
+
+  # Zookeeper (Dependência do Kafka)
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    networks:
+      - log-pipeline
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    volumes:
+      - zk-data:/var/lib/zookeeper/data
+
+  # Kafka
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    networks:
+      - log-pipeline
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_HEAP_OPTS: "-Xms256m -Xmx256m" # Limita memória
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+
+  # Logstash Produtor (Filebeat -> Kafka)
+  logstash-ingest:
+    image: docker.elastic.co/logstash/logstash:8.11.1
+    ports:
+      - "5044:5044" # Porta para receber do Filebeat
+    volumes:
+      - ./logstash-ingest/pipeline:/usr/share/logstash/pipeline:ro
+    networks:
+      - log-pipeline
+    environment:
+      LS_JAVA_OPTS: "-Xms256m -Xmx256m" # Limita memória
+    depends_on:
+      - kafka
+
+  # Logstash Consumidor (Kafka -> Elasticsearch)
+  logstash-sink:
+    image: docker.elastic.co/logstash/logstash:8.11.1
+    volumes:
+      - ./logstash-sink/pipeline:/usr/share/logstash/pipeline:ro
+    networks:
+      - log-pipeline
+    environment:
+      LS_JAVA_OPTS: "-Xms256m -Xmx256m" # Limita memória
+    depends_on:
+      - kafka
+      - elasticsearch
+
+  # -----------------------------------------------
+  # ZONA 3: ARMAZENAMENTO E VISUALIZAÇÃO
+  # -----------------------------------------------
+
+  # Elasticsearch
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.1
+    ports:
+      - "9200:9200"
+    networks:
+      - log-pipeline
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false # Desabilita segurança (NÃO FAÇA EM PRODUÇÃO)
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m # Limita memória
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+
+  # Kibana (Interface Web)
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.1
+    ports:
+      - "5601:5601"
+    networks:
+      - log-pipeline
+    depends_on:
+      - elasticsearch
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+
+# Rede customizada para os serviços se falarem
+networks:
+  log-pipeline:
+    driver: bridge
+
+# Volumes para persistir dados (logs, dados do kafka, dados do elastic)
+volumes:
+  log-data:
+  filebeat-data:
+  zk-data:
+  kafka-data:
+  es-data:

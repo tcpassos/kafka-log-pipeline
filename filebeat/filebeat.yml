@@ -1,0 +1,15 @@
+filebeat.inputs:
+- type: log
+  enabled: true
+  paths:
+    - /var/log/app/*.log
+  
+  # Configuração para juntar os Stack Traces de Java
+  multiline:
+    pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}T' # Padrão de início de log (ISO 8601 TS)
+    negate: true
+    match: after
+
+# Envia a saída para o Logstash "Produtor"
+output.logstash:
+  hosts: ["logstash-ingest:5044"]
