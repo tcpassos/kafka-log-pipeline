@@ -1,18 +1,16 @@
 # Kafka Log Pipeline
 
-Pipeline completo de observabilidade que gera logs fictícios, processa e armazena em um data stream do Elasticsearch, com visualização no Kibana.
+Pipeline completo de observabilidade que processa logs Java e armazena em um data stream do Elasticsearch, com visualização no Kibana.
 
 ## Visão Geral
 
-1. **Geração**: serviço `log-generator` cria logs Java simulados em `/var/log/app/app.log`.
-2. **Coleta**: `filebeat` lê os arquivos e unifica stack traces multiline ([filebeat/filebeat.yml](filebeat/filebeat.yml)).
-3. **Ingestão**: `logstash-ingest` recebe eventos Beats e publica no Kafka ([logstash-ingest/pipeline/logstash.conf](logstash-ingest/pipeline/logstash.conf)).
-4. **Buffer**: `kafka` armazena os eventos para consumo assíncrono.
-5. **Sink**: `logstash-sink` consome o tópico e grava em data stream do Elasticsearch ([logstash-sink/pipeline/logstash.conf](logstash-sink/pipeline/logstash.conf)).
-6. **Visualização**: `kibana` acessa os dados em tempo real.
+1. **Ingestão**: `logstash-ingest` lê arquivos de log diretamente de um diretório local (configurável via `LOGS_SOURCE_PATH`), processa multiline e publica no Kafka ([logstash-ingest/pipeline/logstash.conf](logstash-ingest/pipeline/logstash.conf)).
+2. **Buffer**: `kafka` armazena os eventos para consumo assíncrono.
+3. **Sink**: `logstash-sink` consome o tópico `logs_java_siger` e grava em data stream do Elasticsearch ([logstash-sink/pipeline/logstash.conf](logstash-sink/pipeline/logstash.conf)).
+4. **Visualização**: `kibana` acessa os dados em tempo real.
 
 ```
-log-generator → Filebeat → Logstash (ingest) → Kafka → Logstash (sink) → Elasticsearch → Kibana
+Logs locais → Logstash (ingest) → Kafka → Logstash (sink) → Elasticsearch → Kibana
 ```
 
 ## Requisitos
@@ -23,19 +21,26 @@ log-generator → Filebeat → Logstash (ingest) → Kafka → Logstash (sink) �
 
 ## Como Executar
 
-1. Suba a stack central (Kafka, Logstash, Elasticsearch, Kibana):
+1. **(Opcional) Configure o caminho dos logs:**
 
-```bash
-docker compose up -d zookeeper kafka logstash-ingest logstash-sink elasticsearch kibana
+Crie um arquivo `.env` na raiz do projeto:
+```env
+LOGS_SOURCE_PATH=C:\meus-logs
 ```
 
-2. Ative os clientes simulados desejados (cada perfil representa um par `log-generator`+`filebeat`):
+2. **Suba a stack completa:**
 
 ```bash
-docker compose --profile client-12345 --profile client-67890 up -d --build
+docker compose up -d
 ```
 
-Aguarde alguns segundos até que Elasticsearch e Kibana finalizem o bootstrap e que os clientes comecem a gerar eventos.
+Aguarde alguns segundos até que Elasticsearch e Kibana finalizem o bootstrap.
+
+3. **Coloque seus arquivos de log** no diretório configurado (ex: `C:\temp-logs`). Os arquivos devem seguir o padrão de nomenclatura:
+```
+<TIPO>_<USUARIO>_<HOSTNAME>_<YYYYMMDD>_<HHMMSS>_<SESSION_ID>.[lL][oO][gG]
+```
+Exemplo: `SIGER_Passos_R93700-06-PAS_20251107_093150_6798.LOG`
 
 ### Acessos
 
@@ -47,19 +52,24 @@ Aguarde alguns segundos até que Elasticsearch e Kibana finalizem o bootstrap e 
 
 | Caminho | Descrição |
 | ------- | --------- |
-| [log-generator/](log-generator/) | Contém o gerador de logs (`generator.sh`, [Dockerfile](log-generator/Dockerfile)). |
-| [filebeat/](filebeat/) | Configuração do Filebeat com multiline e saída Logstash. |
-| [logstash-ingest/](logstash-ingest/) | Pipeline Logstash que publica no Kafka. |
+| [log-generator/](log-generator/) | *(Deprecado)* Gerador de logs de exemplo. Não é mais usado na pipeline principal. |
+| [logstash-ingest/](logstash-ingest/) | Pipeline Logstash que lê arquivos locais, processa multiline e publica no Kafka. |
 | [logstash-sink/](logstash-sink/) | Pipeline Logstash que consome do Kafka e envia ao Elasticsearch. |
 
-## Clientes simulados
+## Formato dos Logs
 
-- Perfil `client-12345`: `CLIENT_CODE=12345`, `INSTALLATION_SEQ=001`, `INSTALLATION_UID=client-12345-001`.
-- Perfil `client-67890`: `CLIENT_CODE=67890`, `INSTALLATION_SEQ=002`, `INSTALLATION_UID=client-67890-002`.
-- Cada cliente monta volumes dedicados (`log-data-<id>`, `filebeat-data-<id>`) e compartilha a mesma rede/cluster central.
-- Para adicionar novos clientes, replique os serviços no `docker-compose.yml`, alterando envs, volumes e profiles (ex.: `client-ABCDE`).
+Os logs devem seguir o formato Java com os seguintes campos por linha:
 
-Os eventos publicados carregam os campos `labels.client_code`, `labels.installation_seq` e `labels.installation_uid`, permitindo filtrar tanto por identificadores mutáveis quanto pelo identificador estável da instalação no Kibana.
+```
+<SSID> <SEQNUM> <THREAD> <YYYY-MM-DD HH:mm:ss,SSS> <LEVEL> <logger.name> <Mensagem>
+```
+
+Exemplo:
+```
+ABCD 123456 THREAD1 2025-11-07 09:31:50,679 INFO com.example.MyClass Aplicação iniciada
+```
+
+Stack traces multiline são automaticamente unificadas pelo codec multiline do Logstash.
 
 ## Encerrando
 

@@ -1,74 +1,6 @@
 version: '3.8'
 
-x-log-generator-base: &log-generator-base
-  build: ./log-generator
-  networks:
-    - log-pipeline
-
-x-filebeat-base: &filebeat-base
-  image: docker.elastic.co/beats/filebeat:8.11.1
-  user: root # Necessário para ler arquivos de config montados
-  networks:
-    - log-pipeline
-  depends_on:
-    - logstash-ingest
-  command: filebeat -e --strict.perms=false # Desabilita checagem de permissões
-
 services:
-  # -----------------------------------------------
-  # ZONA 1: GERAÇÃO E COLETA DE LOGS
-  # -----------------------------------------------
-
-  # Cliente 12345-001
-  log-generator-12345:
-    <<: *log-generator-base
-    volumes:
-      - log-data-12345:/var/log/app
-    environment:
-      CLIENT_CODE: "12345"
-      INSTALLATION_SEQ: "001"
-      INSTALLATION_UID: "client-12345-001"
-    profiles: ["client-12345"]
-
-  filebeat-12345:
-    <<: *filebeat-base
-    volumes:
-      - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
-      - log-data-12345:/var/log/app:ro
-      - filebeat-data-12345:/usr/share/filebeat/data
-    environment:
-      CLIENT_CODE: "12345"
-      INSTALLATION_SEQ: "001"
-      INSTALLATION_UID: "client-12345-001"
-    profiles: ["client-12345"]
-
-  # Cliente 67890-002
-  log-generator-67890:
-    <<: *log-generator-base
-    volumes:
-      - log-data-67890:/var/log/app
-    environment:
-      CLIENT_CODE: "67890"
-      INSTALLATION_SEQ: "002"
-      INSTALLATION_UID: "client-67890-002"
-    profiles: ["client-67890"]
-
-  filebeat-67890:
-    <<: *filebeat-base
-    volumes:
-      - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
-      - log-data-67890:/var/log/app:ro
-      - filebeat-data-67890:/usr/share/filebeat/data
-    environment:
-      CLIENT_CODE: "67890"
-      INSTALLATION_SEQ: "002"
-      INSTALLATION_UID: "client-67890-002"
-    profiles: ["client-67890"]
-
-  # -----------------------------------------------
-  # ZONA 2: PROCESSAMENTO E BUFFER
-  # -----------------------------------------------
-
   # Zookeeper (Dependência do Kafka)
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
@@ -98,12 +30,11 @@ services:
     volumes:
       - kafka-data:/var/lib/kafka/data
 
-  # Logstash Produtor (Filebeat -> Kafka)
+  # Logstash Produtor
   logstash-ingest:
     image: docker.elastic.co/logstash/logstash:8.11.1
-    ports:
-      - "5044:5044" # Porta para receber do Filebeat
     volumes:
+      - ${LOGS_SOURCE_PATH:-C:\temp-logs}:/usr/share/logs:ro
       - ./logstash-ingest/pipeline:/usr/share/logstash/pipeline:ro
     networks:
       - log-pipeline
@@ -112,7 +43,7 @@ services:
     depends_on:
       - kafka
 
-  # Logstash Consumidor (Kafka -> Elasticsearch)
+  # Logstash Consumidor
   logstash-sink:
     image: docker.elastic.co/logstash/logstash:8.11.1
     volumes:
@@ -124,10 +55,6 @@ services:
     depends_on:
       - kafka
       - elasticsearch
-
-  # -----------------------------------------------
-  # ZONA 3: ARMAZENAMENTO E VISUALIZAÇÃO
-  # -----------------------------------------------
 
   # Elasticsearch
   elasticsearch:
@@ -162,10 +89,6 @@ networks:
 
 # Volumes para persistir dados (logs, dados do kafka, dados do elastic)
 volumes:
-  log-data-12345:
-  filebeat-data-12345:
-  log-data-67890:
-  filebeat-data-67890:
   zk-data:
   kafka-data:
   es-data:
