@@ -30,6 +30,12 @@ services:
       KAFKA_HEAP_OPTS: "-Xms256m -Xmx256m" # Limita memória
     volumes:
       - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   # Kafka-UI (Interface Web)
   kafka-ui:
@@ -39,11 +45,14 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      - kafka
-      - zookeeper
+      kafka:
+        condition: service_healthy
+      zookeeper:
+        condition: service_started
     environment:
       KAFKA_BROKERS: "kafka:9092"
       ZOOKEEPER_CONNECT: "zookeeper:2181"
+    restart: on-failure
 
   # Logstash Produtor
   logstash-ingest:
