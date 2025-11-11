@@ -26,16 +26,36 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_NUM_PARTITIONS: ${KAFKA_TOPIC_PARTITIONS:-1}
       KAFKA_HEAP_OPTS: "-Xms256m -Xmx256m" # Limita memória
     volumes:
       - kafka-data:/var/lib/kafka/data
+
+  # Kafka-UI (Interface Web)
+  kafka-ui:
+    image: docker.redpanda.com/redpandadata/console:latest
+    networks:
+      - log-pipeline
+    ports:
+      - "8080:8080"
+    depends_on:
+      - kafka
+      - zookeeper
+    environment:
+      KAFKA_BROKERS: "kafka:9092"
+      ZOOKEEPER_CONNECT: "zookeeper:2181"
 
   # Logstash Produtor
   logstash-ingest:
     image: docker.elastic.co/logstash/logstash:8.11.1
     volumes:
-      - ${LOGS_SOURCE_PATH:-C:\temp-logs}:/usr/share/logs:ro
+      - ${LOGS_SOURCE_PATH}:/usr/share/logs:ro
+      # Diretório que contém os pipelines e configurações do Logstash
       - ./logstash-ingest/pipeline:/usr/share/logstash/pipeline:ro
+      # Arquivo de configuração dos pipelines
+      - ./logstash-ingest/pipelines.yml:/usr/share/logstash/config/pipelines.yml:ro
+      # Volume para os "sincedb" (memória de leitura)
+      - logstash-data-ingest:/usr/share/logstash/data 
     networks:
       - log-pipeline
     environment:
@@ -45,6 +65,8 @@ services:
 
   # Logstash Consumidor
   logstash-sink:
+    deploy:
+      replicas: ${LOGSTASH_SINK_REPLICAS:-1} 
     image: docker.elastic.co/logstash/logstash:8.11.1
     volumes:
       - ./logstash-sink/pipeline:/usr/share/logstash/pipeline:ro
@@ -65,7 +87,7 @@ services:
       - log-pipeline
     environment:
       - discovery.type=single-node
-      - xpack.security.enabled=false # Desabilita segurança (NÃO FAÇA EM PRODUÇÃO)
+      - xpack.security.enabled=false # Desabilita segurança (NÃO DEIXAR EM PRODUÇÃO)
       - ES_JAVA_OPTS=-Xms512m -Xmx512m # Limita memória
     volumes:
       - es-data:/usr/share/elasticsearch/data
@@ -92,3 +114,4 @@ volumes:
   zk-data:
   kafka-data:
   es-data:
+  logstash-data-ingest:
