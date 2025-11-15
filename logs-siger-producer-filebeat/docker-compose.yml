@@ -1,0 +1,22 @@
+services:
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.11.1
+    user: root # Necessário para ler os arquivos de configuração montados
+    volumes:
+      - bases-i:/usr/share/logs:ro
+      - ./filebeat.yml:/config/filebeat.yml:ro
+      - filebeat-data:/usr/share/filebeat/data
+    environment:
+      KAFKA_BOOTSTRAP: ${KAFKA_BOOTSTRAP}
+    # Comando necessário para que o Filebeat use variáveis de ambiente no arquivo de configuração
+    command: filebeat -e -c /config/filebeat.yml -strict.perms=false
+
+# Volumes para persistir dados
+volumes:
+  filebeat-data:
+  bases-i:
+    driver: local
+    driver_opts:
+      type: cifs
+      o: "username=guest"
+      device: "//192.168.254.117/DRIVE-I/BAS"

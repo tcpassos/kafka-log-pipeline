@@ -1,0 +1,29 @@
+filebeat.inputs:
+- type: filestream
+  id: logs-siger-java
+  enabled: true
+  paths:
+    - /usr/share/logs/PAS/Clark_Sul_2114/26.10/RLS/java/SIGER_*_*_[0-9]*_[0-9]*_*.*
+  scan_frequency: 30s
+  close_inactive: 1m
+  clean_inactive: 72h
+  # ignore_older: 24h
+  encoding: cp1252
+  parsers:
+    - multiline:
+        pattern: '^[[:alnum:]]{4} [[:alnum:]]{6} [[:alnum:]]{6} \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}\s\w+\s+\S+\s(\s+|Caused by:|<)'
+        negate: true
+        match: after
+
+# Desabilita a saída padrão para o Elasticsearch
+output.elasticsearch:
+  enabled: false
+
+# Configura a saída para o Kafka
+output.kafka:
+  enabled: true
+  hosts: ["${KAFKA_BOOTSTRAP}"]
+  topic: 'logs_java_siger'
+  key: '%{[log.file.path]}'
+  # Garante que o tópico seja criado se não existir (requer configuração no broker)
+  required_acks: 1

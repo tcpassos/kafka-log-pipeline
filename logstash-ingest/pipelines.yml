@@ -1,3 +1,0 @@
-- pipeline.id: siger-java-logs
-  path.config: "/usr/share/logstash/pipeline/logs-siger.conf"
-  pipeline.workers: 3
