@@ -6,11 +6,12 @@ services:
       - kafka-cluster-network
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_SERVER_ID: 1
     volumes:
       - zk-data:/var/lib/zookeeper/data
 
-  # Kafka
-  kafka:
+  # Kafka Broker 1
+  kafka1:
     image: confluentinc/cp-kafka:7.5.0
     networks:
       - kafka-cluster-network
@@ -22,20 +23,64 @@ services:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,EXTERNAL://${KAFKA_ADVERTISED_HOST_IP:-127.0.0.1}:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka1:29092,EXTERNAL://${KAFKA_ADVERTISED_HOST_IP:-127.0.0.1}:9092
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
-      KAFKA_NUM_PARTITIONS: ${KAFKA_TOPIC_PARTITIONS:-1}
-      KAFKA_HEAP_OPTS: "-Xms256m -Xmx256m" # Limita memória
+      KAFKA_NUM_PARTITIONS: ${KAFKA_TOPIC_PARTITIONS:-3}
+      KAFKA_HEAP_OPTS: "-Xms256m -Xmx256m"
+      KAFKA_JMX_PORT: 9991
+      KAFKA_JMX_HOSTNAME: kafka1
     volumes:
-      - kafka-data:/var/lib/kafka/data
-    healthcheck:
-      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+      - kafka-data-1:/var/lib/kafka/data
+
+  # Kafka Broker 2
+  kafka2:
+    image: confluentinc/cp-kafka:7.5.0
+    networks:
+      - kafka-cluster-network
+    ports:
+      - "9093:9093"
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 2
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka2:29092,EXTERNAL://${KAFKA_ADVERTISED_HOST_IP:-127.0.0.1}:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_NUM_PARTITIONS: ${KAFKA_TOPIC_PARTITIONS:-3}
+      KAFKA_HEAP_OPTS: "-Xms256m -Xmx256m"
+      KAFKA_JMX_PORT: 9992
+      KAFKA_JMX_HOSTNAME: kafka2
+    volumes:
+      - kafka-data-2:/var/lib/kafka/data
+
+  # Kafka Broker 3
+  kafka3:
+    image: confluentinc/cp-kafka:7.5.0
+    networks:
+      - kafka-cluster-network
+    ports:
+      - "9094:9094"
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 3
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka3:29092,EXTERNAL://${KAFKA_ADVERTISED_HOST_IP:-127.0.0.1}:9094
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_NUM_PARTITIONS: ${KAFKA_TOPIC_PARTITIONS:-3}
+      KAFKA_HEAP_OPTS: "-Xms256m -Xmx256m"
+      KAFKA_JMX_PORT: 9993
+      KAFKA_JMX_HOSTNAME: kafka3
+    volumes:
+      - kafka-data-3:/var/lib/kafka/data
 
   # Kafka-UI (Interface Web)
   kafka-ui:
@@ -45,14 +90,102 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      kafka:
-        condition: service_healthy
-      zookeeper:
-        condition: service_started
+      - kafka1
+      - kafka2
+      - kafka3
     environment:
-      KAFKA_BROKERS: "kafka:29092"
+      KAFKA_BROKERS: "kafka1:29092,kafka2:29092,kafka3:29092"
       ZOOKEEPER_CONNECT: "zookeeper:2181"
     restart: on-failure
+
+  jmx-exporter-kafka1:
+    image: sscaling/jmx-prometheus-exporter
+    networks:
+      - kafka-cluster-network
+    ports:
+      - "9101:9101"
+    environment:
+      SERVICE_PORT: 9101
+      JMX_PORT: 9991
+      KAFKA_SERVICE: kafka1
+    depends_on:
+      - kafka1
+
+  jmx-exporter-kafka2:
+    image: sscaling/jmx-prometheus-exporter
+    networks:
+      - kafka-cluster-network
+    ports:
+      - "9102:9102"
+    environment:
+      SERVICE_PORT: 9102
+      JMX_PORT: 9992
+      KAFKA_SERVICE: kafka2
+    depends_on:
+      - kafka2
+
+  jmx-exporter-kafka3:
+    image: sscaling/jmx-prometheus-exporter
+    networks:
+      - kafka-cluster-network
+    ports:
+      - "9103:9103"
+    environment:
+      SERVICE_PORT: 9103
+      JMX_PORT: 9993
+      KAFKA_SERVICE: kafka3
+    depends_on:
+      - kafka3
+
+  node-exporter:
+    image: prom/node-exporter:v1.7.0
+    networks:
+      - kafka-cluster-network
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+
+  prometheus:
+    image: prom/prometheus:v2.49.0
+    networks:
+      - kafka-cluster-network
+    ports:
+      - "9090:9090"
+    volumes:
+      - prometheus-data:/prometheus
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    depends_on:
+      - jmx-exporter-kafka1
+      - jmx-exporter-kafka2
+      - jmx-exporter-kafka3
+      - node-exporter
+
+  grafana:
+    image: grafana/grafana:10.2.3
+    networks:
+      - kafka-cluster-network
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_INSTALL_PLUGINS: grafana-clock-panel
+    depends_on:
+      - prometheus
 
 # Rede customizada para os serviços se falarem
 networks:
@@ -62,4 +195,8 @@ networks:
 # Volumes para persistir dados
 volumes:
   zk-data:
-  kafka-data:
+  kafka-data-1:
+  kafka-data-2:
+  kafka-data-3:
+  prometheus-data:
+  grafana-data:
