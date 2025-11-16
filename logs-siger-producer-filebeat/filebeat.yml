@@ -44,7 +44,9 @@ output.elasticsearch:
 # Configura a saída para o Kafka com roteamento dinâmico por tópico
 output.kafka:
   enabled: true
-  hosts: ["${KAFKA_BOOTSTRAP}"]
+  hosts:
+    - broker:29092
+    - broker2:29092
   topic: '%{[fields.topic]}'
   key: '%{[log.file.path]}'
   required_acks: 1

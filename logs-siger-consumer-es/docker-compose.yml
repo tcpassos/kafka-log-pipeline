@@ -7,9 +7,11 @@ services:
     networks:
       - log-consumer-network
       - kafka-cluster-network
+    restart: unless-stopped
+    mem_limit: 512m
     environment:
       LS_JAVA_OPTS: "-Xms256m -Xmx256m" # Limita memória
-      KAFKA_BOOTSTRAP: ${KAFKA_BOOTSTRAP}
+      KAFKA_BOOTSTRAP: broker:29092,broker2:29092
     depends_on:
       - elasticsearch
 
@@ -20,11 +22,12 @@ services:
       - discovery.type=single-node
       - xpack.security.enabled=false # Desabilita segurança (NÃO DEIXAR EM PRODUÇÃO)
       - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - bootstrap.memory_lock=true
     ports:
       - "9200:9200"
     networks:
       - log-consumer-network
-      - kafka-cluster-network
+    restart: unless-stopped
     volumes:
       - es-data:/usr/share/elasticsearch/data
     mem_limit: 1g
@@ -32,6 +35,11 @@ services:
       memlock:
         soft: -1
         hard: -1
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health >/dev/null"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
 
   # Kibana (Interface Web)
   kibana:
@@ -40,11 +48,17 @@ services:
       - "5601:5601"
     networks:
       - log-consumer-network
-      - kafka-cluster-network
+    restart: unless-stopped
+    mem_limit: 512m
     depends_on:
       - elasticsearch
     environment:
       ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:5601/api/status >/dev/null"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
 
 # Rede customizada para os serviços se falarem
 networks:
