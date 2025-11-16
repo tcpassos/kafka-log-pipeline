@@ -1,14 +1,36 @@
 filebeat.inputs:
+# Input para logs SIGER normais
 - type: filestream
   id: logs-siger-java
   enabled: true
   paths:
-    - /usr/share/logs/PAS/Clark_Sul_2114/26.10/RLS/java/SIGER_*_*_[0-9]*_[0-9]*_*.*
+    - /usr/share/logs/SIGER_*_*_[0-9]*_[0-9]*_*.*
   scan_frequency: 30s
   close_inactive: 1m
   clean_inactive: 72h
-  # ignore_older: 24h
   encoding: cp1252
+  fields:
+    topic: logs_java_siger
+    client_id: ${CLIENT_ID}
+  parsers:
+    - multiline:
+        pattern: '^[[:alnum:]]{4} [[:alnum:]]{6} [[:alnum:]]{6} \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}\s\w+\s+\S+\s(\s+|Caused by:|<)'
+        negate: true
+        match: after
+
+# Input para logs SigerCrashReport
+- type: filestream
+  id: logs-sigercrash-java
+  enabled: true
+  paths:
+    - /usr/share/logs/SigerCrashReport_*_*_[0-9]*_[0-9]*_*.*
+  scan_frequency: 30s
+  close_inactive: 1m
+  clean_inactive: 72h
+  encoding: cp1252
+  fields:
+    topic: logs_java_sigercrashreport
+    client_id: ${CLIENT_ID}
   parsers:
     - multiline:
         pattern: '^[[:alnum:]]{4} [[:alnum:]]{6} [[:alnum:]]{6} \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}\s\w+\s+\S+\s(\s+|Caused by:|<)'
@@ -19,11 +41,10 @@ filebeat.inputs:
 output.elasticsearch:
   enabled: false
 
-# Configura a saída para o Kafka
+# Configura a saída para o Kafka com roteamento dinâmico por tópico
 output.kafka:
   enabled: true
   hosts: ["${KAFKA_BOOTSTRAP}"]
-  topic: 'logs_java_siger'
+  topic: '%{[fields.topic]}'
   key: '%{[log.file.path]}'
-  # Garante que o tópico seja criado se não existir (requer configuração no broker)
   required_acks: 1

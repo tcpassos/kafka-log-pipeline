@@ -6,6 +6,7 @@ services:
       - ./logstash-sink/pipeline:/usr/share/logstash/pipeline:ro
     networks:
       - log-consumer-network
+      - kafka-cluster-network
     environment:
       LS_JAVA_OPTS: "-Xms256m -Xmx256m" # Limita memória
       KAFKA_BOOTSTRAP: ${KAFKA_BOOTSTRAP}
@@ -18,12 +19,19 @@ services:
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false # Desabilita segurança (NÃO DEIXAR EM PRODUÇÃO)
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
     ports:
       - "9200:9200"
     networks:
       - log-consumer-network
+      - kafka-cluster-network
     volumes:
       - es-data:/usr/share/elasticsearch/data
+    mem_limit: 1g
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
 
   # Kibana (Interface Web)
   kibana:
@@ -32,6 +40,7 @@ services:
       - "5601:5601"
     networks:
       - log-consumer-network
+      - kafka-cluster-network
     depends_on:
       - elasticsearch
     environment:
@@ -41,6 +50,9 @@ services:
 networks:
   log-consumer-network:
     driver: bridge
+  kafka-cluster-network:
+    external: true
+    name: kafka-cluster-network
 
 # Volumes para persistir dados
 volumes:

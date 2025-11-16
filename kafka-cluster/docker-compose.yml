@@ -1,202 +1,214 @@
+version: '2'
+
 services:
-  # Zookeeper (Dependência do Kafka)
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
+    hostname: zookeeper
+    container_name: zookeeper
     networks:
       - kafka-cluster-network
+    ports:
+      - "2181:2181"
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_SERVER_ID: 1
+      ZOOKEEPER_TICK_TIME: 2000
     volumes:
       - zk-data:/var/lib/zookeeper/data
 
-  # Kafka Broker 1
-  kafka1:
-    image: confluentinc/cp-kafka:7.5.0
+  broker:
+    image: confluentinc/cp-server:7.5.0
+    hostname: broker
+    container_name: broker
     networks:
       - kafka-cluster-network
-    ports:
-      - "9092:9092"
     depends_on:
       - zookeeper
+    ports:
+      - "9092:9092"
+      - "9101:9101"
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka1:29092,EXTERNAL://${KAFKA_ADVERTISED_HOST_IP:-127.0.0.1}:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker:29092,PLAINTEXT_HOST://${KAFKA_ADVERTISED_HOST_IP:-127.0.0.1}:9092
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
-      KAFKA_NUM_PARTITIONS: ${KAFKA_TOPIC_PARTITIONS:-3}
-      KAFKA_HEAP_OPTS: "-Xms256m -Xmx256m"
-      KAFKA_JMX_PORT: 9991
-      KAFKA_JMX_HOSTNAME: kafka1
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 2
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_METRIC_REPORTERS: io.confluent.metrics.reporter.ConfluentMetricsReporter
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 2
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_CONFLUENT_LICENSE_TOPIC_REPLICATION_FACTOR: 2
+      KAFKA_CONFLUENT_BALANCER_TOPIC_REPLICATION_FACTOR: 2
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 2
+      KAFKA_NUM_PARTITIONS: 6
+      KAFKA_JMX_PORT: 9101
+      KAFKA_JMX_HOSTNAME: broker
+      KAFKA_CONFLUENT_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: broker:29092,broker2:29092
+      CONFLUENT_METRICS_REPORTER_TOPIC_REPLICAS: 2
+      CONFLUENT_METRICS_ENABLE: 'true'
+      CONFLUENT_SUPPORT_CUSTOMER_ID: 'anonymous'
     volumes:
       - kafka-data-1:/var/lib/kafka/data
 
-  # Kafka Broker 2
-  kafka2:
-    image: confluentinc/cp-kafka:7.5.0
+  broker2:
+    image: confluentinc/cp-server:7.5.0
+    hostname: broker2
+    container_name: broker2
     networks:
       - kafka-cluster-network
-    ports:
-      - "9093:9093"
     depends_on:
       - zookeeper
+    ports:
+      - "9093:9092"
+      - "9102:9101"
     environment:
       KAFKA_BROKER_ID: 2
       KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka2:29092,EXTERNAL://${KAFKA_ADVERTISED_HOST_IP:-127.0.0.1}:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker2:29092,PLAINTEXT_HOST://${KAFKA_ADVERTISED_HOST_IP:-127.0.0.1}:9093
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
-      KAFKA_NUM_PARTITIONS: ${KAFKA_TOPIC_PARTITIONS:-3}
-      KAFKA_HEAP_OPTS: "-Xms256m -Xmx256m"
-      KAFKA_JMX_PORT: 9992
-      KAFKA_JMX_HOSTNAME: kafka2
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 2
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_METRIC_REPORTERS: io.confluent.metrics.reporter.ConfluentMetricsReporter
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 2
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_CONFLUENT_LICENSE_TOPIC_REPLICATION_FACTOR: 2
+      KAFKA_CONFLUENT_BALANCER_TOPIC_REPLICATION_FACTOR: 2
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 2
+      KAFKA_NUM_PARTITIONS: 6
+      KAFKA_JMX_PORT: 9101
+      KAFKA_JMX_HOSTNAME: broker2
+      KAFKA_CONFLUENT_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: broker:29092,broker2:29092
+      CONFLUENT_METRICS_REPORTER_TOPIC_REPLICAS: 2
+      CONFLUENT_METRICS_ENABLE: 'true'
+      CONFLUENT_SUPPORT_CUSTOMER_ID: 'anonymous'
     volumes:
       - kafka-data-2:/var/lib/kafka/data
 
-  # Kafka Broker 3
-  kafka3:
-    image: confluentinc/cp-kafka:7.5.0
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.5.0
+    hostname: schema-registry
+    container_name: schema-registry
     networks:
       - kafka-cluster-network
-    ports:
-      - "9094:9094"
     depends_on:
-      - zookeeper
+      - broker
+      - broker2
+    ports:
+      - "8081:8081"
     environment:
-      KAFKA_BROKER_ID: 3
-      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka3:29092,EXTERNAL://${KAFKA_ADVERTISED_HOST_IP:-127.0.0.1}:9094
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
-      KAFKA_NUM_PARTITIONS: ${KAFKA_TOPIC_PARTITIONS:-3}
-      KAFKA_HEAP_OPTS: "-Xms256m -Xmx256m"
-      KAFKA_JMX_PORT: 9993
-      KAFKA_JMX_HOSTNAME: kafka3
-    volumes:
-      - kafka-data-3:/var/lib/kafka/data
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: 'broker:29092,broker2:29092'
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
 
-  # Kafka-UI (Interface Web)
+  connect:
+    image: confluentinc/cp-server-connect:7.5.0
+    hostname: connect
+    container_name: connect
+    networks:
+      - kafka-cluster-network
+    depends_on:
+      - broker
+      - broker2
+      - schema-registry
+    ports:
+      - "8083:8083"
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: 'broker:29092,broker2:29092'
+      CONNECT_REST_ADVERTISED_HOST_NAME: connect
+      CONNECT_GROUP_ID: compose-connect-group
+      CONNECT_CONFIG_STORAGE_TOPIC: docker-connect-configs
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 2
+      CONNECT_OFFSET_FLUSH_INTERVAL_MS: 10000
+      CONNECT_OFFSET_STORAGE_TOPIC: docker-connect-offsets
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 2
+      CONNECT_STATUS_STORAGE_TOPIC: docker-connect-status
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 2
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
+      CONNECT_VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
+      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CLASSPATH: /usr/share/java/monitoring-interceptors/monitoring-interceptors-7.5.0.jar
+      CONNECT_PRODUCER_INTERCEPTOR_CLASSES: "io.confluent.monitoring.clients.interceptor.MonitoringProducerInterceptor"
+      CONNECT_CONSUMER_INTERCEPTOR_CLASSES: "io.confluent.monitoring.clients.interceptor.MonitoringConsumerInterceptor"
+      CONNECT_PLUGIN_PATH: "/usr/share/java,/usr/share/confluent-hub-components"
+      CONNECT_LOG4J_LOGGERS: org.apache.zookeeper=ERROR,org.I0Itec.zkclient=ERROR,org.reflections=ERROR
+
+  control-center:
+    image: confluentinc/cp-enterprise-control-center:7.5.0
+    hostname: control-center
+    container_name: control-center
+    networks:
+      - kafka-cluster-network
+    depends_on:
+      - broker
+      - broker2
+      - schema-registry
+      - connect
+    ports:
+      - "9021:9021"
+    environment:
+      CONTROL_CENTER_BOOTSTRAP_SERVERS: 'broker:29092,broker2:29092'
+      CONTROL_CENTER_KAFKA_CLUSTERS: main
+      CONTROL_CENTER_KAFKA_main_BOOTSTRAP_SERVERS: broker:29092,broker2:29092
+      CONTROL_CENTER_KAFKA_main_ZOOKEEPER_CONNECT: zookeeper:2181
+      CONTROL_CENTER_CONNECT_CONNECT-DEFAULT_CLUSTER: 'connect:8083'
+      CONTROL_CENTER_SCHEMA_REGISTRY_URL: "http://schema-registry:8081"
+      CONTROL_CENTER_REPLICATION_FACTOR: 2
+      CONTROL_CENTER_INTERNAL_TOPICS_PARTITIONS: 2
+      CONTROL_CENTER_MONITORING_INTERCEPTOR_TOPIC_PARTITIONS: 2
+      CONFLUENT_METRICS_TOPIC_REPLICATION: 2
+      PORT: 9021
+
+
   kafka-ui:
-    image: docker.redpanda.com/redpandadata/console:latest
+    image: provectuslabs/kafka-ui:latest
+    hostname: kafka-ui
+    container_name: kafka-ui
     networks:
       - kafka-cluster-network
-    ports:
-      - "8080:8080"
     depends_on:
-      - kafka1
-      - kafka2
-      - kafka3
+      - broker
+      - broker2
+      - schema-registry
+    ports:
+      - "8090:8080"
     environment:
-      KAFKA_BROKERS: "kafka1:29092,kafka2:29092,kafka3:29092"
-      ZOOKEEPER_CONNECT: "zookeeper:2181"
-    restart: on-failure
+      KAFKA_CLUSTERS_0_NAME: main
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: broker:29092,broker2:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+      KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://schema-registry:8081
 
-  jmx-exporter-kafka1:
-    image: sscaling/jmx-prometheus-exporter
+
+  rest-proxy:
+    image: confluentinc/cp-kafka-rest:7.5.0
+    hostname: rest-proxy
+    container_name: rest-proxy
     networks:
       - kafka-cluster-network
+    depends_on:
+      - broker
+      - broker2
+      - schema-registry
     ports:
-      - "9101:9101"
+      - "8082:8082"
     environment:
-      SERVICE_PORT: 9101
-      JMX_PORT: 9991
-      KAFKA_SERVICE: kafka1
-    depends_on:
-      - kafka1
+      KAFKA_REST_HOST_NAME: rest-proxy
+      KAFKA_REST_BOOTSTRAP_SERVERS: 'broker:29092,broker2:29092'
+      KAFKA_REST_LISTENERS: "http://0.0.0.0:8082"
+      KAFKA_REST_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081'
 
-  jmx-exporter-kafka2:
-    image: sscaling/jmx-prometheus-exporter
-    networks:
-      - kafka-cluster-network
-    ports:
-      - "9102:9102"
-    environment:
-      SERVICE_PORT: 9102
-      JMX_PORT: 9992
-      KAFKA_SERVICE: kafka2
-    depends_on:
-      - kafka2
-
-  jmx-exporter-kafka3:
-    image: sscaling/jmx-prometheus-exporter
-    networks:
-      - kafka-cluster-network
-    ports:
-      - "9103:9103"
-    environment:
-      SERVICE_PORT: 9103
-      JMX_PORT: 9993
-      KAFKA_SERVICE: kafka3
-    depends_on:
-      - kafka3
-
-  node-exporter:
-    image: prom/node-exporter:v1.7.0
-    networks:
-      - kafka-cluster-network
-    volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro
-    command:
-      - '--path.procfs=/host/proc'
-      - '--path.sysfs=/host/sys'
-      - '--path.rootfs=/rootfs'
-      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
-
-  prometheus:
-    image: prom/prometheus:v2.49.0
-    networks:
-      - kafka-cluster-network
-    ports:
-      - "9090:9090"
-    volumes:
-      - prometheus-data:/prometheus
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--storage.tsdb.retention.time=15d'
-      - '--web.enable-lifecycle'
-    depends_on:
-      - jmx-exporter-kafka1
-      - jmx-exporter-kafka2
-      - jmx-exporter-kafka3
-      - node-exporter
-
-  grafana:
-    image: grafana/grafana:10.2.3
-    networks:
-      - kafka-cluster-network
-    ports:
-      - "3000:3000"
-    volumes:
-      - grafana-data:/var/lib/grafana
-    environment:
-      GF_SECURITY_ADMIN_PASSWORD: admin
-      GF_INSTALL_PLUGINS: grafana-clock-panel
-    depends_on:
-      - prometheus
-
-# Rede customizada para os serviços se falarem
 networks:
   kafka-cluster-network:
     driver: bridge
+    name: kafka-cluster-network
 
-# Volumes para persistir dados
 volumes:
   zk-data:
   kafka-data-1:
   kafka-data-2:
-  kafka-data-3:
-  prometheus-data:
-  grafana-data:

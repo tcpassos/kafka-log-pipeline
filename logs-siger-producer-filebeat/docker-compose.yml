@@ -1,22 +1,48 @@
 services:
-  filebeat:
+  # Filebeat Cliente 1
+  filebeat-cliente1:
     image: docker.elastic.co/beats/filebeat:8.11.1
-    user: root # Necessário para ler os arquivos de configuração montados
+    user: root
+    container_name: filebeat-cliente1
+    networks:
+      - kafka-cluster-network
     volumes:
-      - bases-i:/usr/share/logs:ro
+      - ./sample-logs-1:/usr/share/logs:ro
       - ./filebeat.yml:/config/filebeat.yml:ro
-      - filebeat-data:/usr/share/filebeat/data
+      - filebeat-cliente1-data:/usr/share/filebeat/data
     environment:
       KAFKA_BOOTSTRAP: ${KAFKA_BOOTSTRAP}
-    # Comando necessário para que o Filebeat use variáveis de ambiente no arquivo de configuração
+      CLIENT_ID: cliente1
+    command: filebeat -e -c /config/filebeat.yml -strict.perms=false
+
+  # Filebeat Cliente 2
+  filebeat-cliente2:
+    image: docker.elastic.co/beats/filebeat:8.11.1
+    user: root
+    container_name: filebeat-cliente2
+    networks:
+      - kafka-cluster-network
+    volumes:
+      - ./sample-logs-2:/usr/share/logs:ro
+      - ./filebeat.yml:/config/filebeat.yml:ro
+      - filebeat-cliente2-data:/usr/share/filebeat/data
+    environment:
+      KAFKA_BOOTSTRAP: ${KAFKA_BOOTSTRAP}
+      CLIENT_ID: cliente2
     command: filebeat -e -c /config/filebeat.yml -strict.perms=false
 
 # Volumes para persistir dados
 volumes:
-  filebeat-data:
-  bases-i:
-    driver: local
-    driver_opts:
-      type: cifs
-      o: "username=guest"
-      device: "//192.168.254.117/DRIVE-I/BAS"
+  filebeat-cliente1-data:
+  filebeat-cliente2-data:
+#   bases-i:
+#     driver: local
+#     driver_opts:
+#       type: cifs
+#       o: "username=guest"
+#       device: "//192.168.254.117/DRIVE-I/BAS"
+
+networks:
+  kafka-cluster-network:
+    external: true
+    name: kafka-cluster-network
