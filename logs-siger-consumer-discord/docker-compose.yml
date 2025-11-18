@@ -1,0 +1,24 @@
+services:
+  # Logstash Consumer para Discord
+  logstash-discord:
+    image: docker.elastic.co/logstash/logstash:8.11.1
+    container_name: logstash-discord
+    volumes:
+      - ./logstash-discord/pipeline:/usr/share/logstash/pipeline:ro
+    networks:
+      - kafka-cluster-network
+      - discord-network
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      LS_JAVA_OPTS: "-Xms256m -Xmx256m"
+      KAFKA_BOOTSTRAP: broker:29092,broker2:29092
+      DISCORD_WEBHOOK_URL: "https://discord.com/api/webhooks/1440132191995826368/xCAKBlOQLTsCYiKNDzYEbYlfigGXtPuAXz57HVajt9IHVuK1Iz7SoM8OBUFrJ3KeDyTd"
+
+# Redes
+networks:
+  discord-network:
+    driver: bridge
+  kafka-cluster-network:
+    external: true
+    name: kafka-cluster-network

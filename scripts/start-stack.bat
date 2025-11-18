@@ -9,6 +9,9 @@ if errorlevel 1 goto :error
 call :run "Consumer stack" "%ROOT%\logs-siger-consumer-es" "docker compose up -d"
 if errorlevel 1 goto :error
 
+call :run "Discord consumer stack" "%ROOT%\logs-siger-consumer-discord" "docker compose up -d"
+if errorlevel 1 goto :error
+
 call :run "Producer stack" "%ROOT%\logs-siger-producer-filebeat" "docker compose up -d"
 if errorlevel 1 goto :error
 

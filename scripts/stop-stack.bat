@@ -6,6 +6,9 @@ set "ROOT=%~dp0.."
 call :run "Producer stack" "%ROOT%\logs-siger-producer-filebeat" "docker compose down -v"
 if errorlevel 1 goto :error
 
+call :run "Discord consumer stack" "%ROOT%\logs-siger-consumer-discord" "docker compose down -v"
+if errorlevel 1 goto :error
+
 call :run "Consumer stack" "%ROOT%\logs-siger-consumer-es" "docker compose down -v"
 if errorlevel 1 goto :error
 
