@@ -15,7 +15,7 @@ filebeat.inputs:
   parsers:
     - multiline:
         pattern: '^[[:alnum:]]{4} [[:alnum:]]{6} [[:alnum:]]{6} \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}\s\w+\s+\S+\s(\s+|Caused by:|<)'
-        negate: true
+        negate: false
         match: after
 
 # Input para logs SigerCrashReport
@@ -34,7 +34,7 @@ filebeat.inputs:
   parsers:
     - multiline:
         pattern: '^[[:alnum:]]{4} [[:alnum:]]{6} [[:alnum:]]{6} \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}\s\w+\s+\S+\s(\s+|Caused by:|<)'
-        negate: true
+        negate: false
         match: after
 
 # Desabilita a saída padrão para o Elasticsearch
