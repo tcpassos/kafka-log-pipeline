@@ -1,0 +1,74 @@
+{
+  "index_patterns": ["logs-java-siger*", "logs-crash-siger*"],
+  "priority": 500,
+  "data_stream": {},
+  "template": {
+    "settings": {
+      "index": {
+        "number_of_shards": 1,
+        "number_of_replicas": 0,
+        "refresh_interval": "30s",
+        "translog": {
+          "durability": "async",
+          "sync_interval": "30s"
+        },
+        "codec": "best_compression"
+      }
+    },
+    "mappings": {
+      "_source": { "enabled": true },
+      "dynamic": "false",
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "message":    { "type": "text" },
+        "client_id":  { "type": "keyword" },
+        "sequence":   { "type": "keyword" },
+        "filename":   { "type": "keyword" },
+        "topic":      { "type": "keyword" },
+        "tags":       { "type": "keyword" },
+        "log": {
+          "properties": {
+            "session_id": { "type": "keyword" },
+            "sequence":   { "type": "keyword" },
+            "thread_id":  { "type": "keyword" },
+            "level":      { "type": "keyword" },
+            "logger":     { "type": "keyword" },
+            "file": {
+              "properties": {
+                "path": { "type": "keyword" }
+              }
+            }
+          }
+        },
+        "error": {
+          "properties": {
+            "type":        { "type": "keyword" },
+            "stack_trace": { "type": "text" }
+          }
+        },
+        "host": {
+          "properties": {
+            "name": { "type": "keyword" }
+          }
+        },
+        "agent": {
+          "properties": {
+            "name":    { "type": "keyword" },
+            "version": { "type": "keyword" },
+            "type":    { "type": "keyword" }
+          }
+        },
+        "input": {
+          "properties": {
+            "type": { "type": "keyword" }
+          }
+        },
+        "ecs": {
+          "properties": {
+            "version": { "type": "keyword" }
+          }
+        }
+      }
+    }
+  }
+}

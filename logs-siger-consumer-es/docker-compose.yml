@@ -1,16 +1,18 @@
 services:
-  # Logstash Consumidor
+  # Logstash Consumidor — pipelines paralelos (siger-java + siger-crash)
   logstash-sink:
     image: docker.elastic.co/logstash/logstash:8.11.1
+    container_name: logstash-sink
     volumes:
       - ./logstash-sink/pipeline:/usr/share/logstash/pipeline:ro
+      - ./logstash-sink/config/pipelines.yml:/usr/share/logstash/config/pipelines.yml:ro
     networks:
       - log-consumer-network
       - kafka-cluster-network
     restart: unless-stopped
-    mem_limit: 512m
+    mem_limit: 768m
     environment:
-      LS_JAVA_OPTS: "-Xms256m -Xmx256m" # Limita memória
+      LS_JAVA_OPTS: "-Xms384m -Xmx384m"
       KAFKA_BOOTSTRAP: broker:29092,broker2:29092
     depends_on:
       - elasticsearch
@@ -21,7 +23,7 @@ services:
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false # Desabilita segurança (NÃO DEIXAR EM PRODUÇÃO)
-      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - ES_JAVA_OPTS=-Xms768m -Xmx768m
       - bootstrap.memory_lock=true
     ports:
       - "9200:9200"
@@ -30,7 +32,7 @@ services:
     restart: unless-stopped
     volumes:
       - es-data:/usr/share/elasticsearch/data
-    mem_limit: 1g
+    mem_limit: 1300m
     ulimits:
       memlock:
         soft: -1

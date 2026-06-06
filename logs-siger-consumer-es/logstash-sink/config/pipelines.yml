@@ -1,0 +1,13 @@
+# Pipelines paralelos — um por tópico Kafka.
+# Isola o processamento pesado de stack traces Java (siger-java)
+# do consumo de crash reports (siger-crash).
+
+- pipeline.id: siger-java
+  path.config: /usr/share/logstash/pipeline/siger-java.conf
+  pipeline.workers: 4
+  pipeline.batch.size: 500
+
+- pipeline.id: siger-crash
+  path.config: /usr/share/logstash/pipeline/siger-crash.conf
+  pipeline.workers: 2
+  pipeline.batch.size: 250

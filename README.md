@@ -12,8 +12,7 @@ graph TB
     end
 
     subgraph "PRODUCER STACK - Coleta"
-        FB1[🔍 Filebeat Cliente 1<br/>filebeat-cliente1]
-        FB2[🔍 Filebeat Cliente 2<br/>filebeat-cliente2]
+        FB[🔍 Filebeat Collector<br/>filebeat-collector<br/>varre todos os clientes]
     end
 
     subgraph "KAFKA CLUSTER - Mensageria"
@@ -23,8 +22,8 @@ graph TB
         SR[📋 Schema Registry<br/>:8081]
         
         subgraph "Tópicos Kafka"
-            T1[📬 Topic: logs_java_siger]
-            T2[📬 Topic: logs_java_sigercrashreport]
+            T1[📬 Topic: logs_siger_java]
+            T2[📬 Topic: logs_siger_crash]
         end
         
         UI1[🖥️ Kafka UI<br/>:8090]
@@ -32,25 +31,19 @@ graph TB
     end
 
     subgraph "CONSUMER STACK - Processamento"
-        LS[⚙️ Logstash Sink<br/>Consumer Group:<br/>logstash-elastic-consumer]
-        LD[🔔 Logstash Discord<br/>Consumer Group:<br/>logstash-discord-consumer]
+        LS[⚙️ Logstash Sink<br/>Pipelines: siger-java + siger-crash<br/>Groups: logstash-elastic-siger-java<br/>logstash-elastic-siger-crash]
     end
 
     subgraph "ARMAZENAMENTO E VISUALIZAÇÃO"
         ES[🗄️ Elasticsearch<br/>:9200<br/>Data Stream: logs-java-siger]
         KB[📊 Kibana<br/>:5601]
-        DC[💬 Discord<br/>Webhook Alerts]
     end
 
-    L1 -->|Scan 30s| FB1
-    L1 -->|Scan 30s| FB2
-    L2 -->|Scan 30s| FB1
-    L2 -->|Scan 30s| FB2
+    L1 -->|Scan 10s| FB
+    L2 -->|Scan 10s| FB
 
-    FB1 -->|Produz| T1
-    FB1 -->|Produz| T2
-    FB2 -->|Produz| T1
-    FB2 -->|Produz| T2
+    FB -->|Produz| T1
+    FB -->|Produz| T2
 
     ZK -.->|Coordena| K1
     ZK -.->|Coordena| K2
@@ -61,10 +54,9 @@ graph TB
     K2 -.-> T2
 
     T1 -->|Consome| LS
-    T2 -->|Consome SEVERE logs| LD
+    T2 -->|Consome| LS
     
     LS -->|Parse & Filter| ES
-    LD -->|HTTP POST| DC
 
     ES -->|Visualiza| KB
 
@@ -80,7 +72,7 @@ graph TB
     classDef logs fill:#fff3e0,stroke:#e65100,stroke-width:2px
 
     class L1,L2 logs
-    class FB1,FB2 producer
+    class FB producer
     class ZK,K1,K2,SR,T1,T2,UI1,UI2 kafka
     class LS consumer
     class ES,KB storage
@@ -126,33 +118,36 @@ Infraestrutura central de mensageria com alta disponibilidade:
 - **REST Proxy** (`:8082`) - API REST
 
 ### 2. Producer Stack (`logs-siger-producer-filebeat/`)
-Coleta de logs com múltiplos clientes Filebeat:
+Coleta de logs com **1 container Filebeat único** (single-ingestor) varrendo todos os clientes:
 
-**Filebeat Instances:**
-- `filebeat-cliente1` - Coleta logs do sample-logs-1
-- `filebeat-cliente2` - Coleta logs do sample-logs-2
+**Filebeat Instance:**
+- `filebeat-collector` — monta `../logs:/usr/share/logs:ro` (raiz com todos os clientes)
+- `client_id` e `sequence` extraídos via processor `dissect` em `log.file.path`
+- Suporta `<client_id>/<sequence>/RLS/java/...` e `<client_id>/RLS/java/...` (fallback `sequence="default"`)
 
 **Configuração de Inputs:**
-- **logs-siger-java**: Logs normais → Topic `logs_java_siger`
-  - Pattern: `SIGER_*_*_[0-9]*_[0-9]*_*.*`
-- **logs-sigercrash-java**: Logs de crash → Topic `logs_java_sigercrashreport`
-  - Pattern: `SigerCrashReport_*_*_[0-9]*_[0-9]*_*.*`
+- **siger-java**: Logs Java → Topic `logs_siger_java`
+  - Paths: `/usr/share/logs/*/RLS/java/SIGER_*` e `/usr/share/logs/*/*/RLS/java/SIGER_*`
+- **siger-crash**: Crash reports → Topic `logs_siger_crash`
+  - Paths: `/usr/share/logs/*/RLS/java/SigerCrashReport_*` e `/usr/share/logs/*/*/RLS/java/SigerCrashReport_*`
 
 **Características:**
 - Encoding CP1252 (Windows)
 - Multiline parsing para stack traces Java
-- Scan a cada 30s
-- Roteamento dinâmico por tópico
-- Particionamento por file path
+- `scan_frequency: 10s`, `close.on_state_change.inactive: 5m`, `harvester_limit: 500`
+- `queue.mem` 16384 eventos / flush 2048 → batch grande para Kafka
+- Kafka output com `compression: lz4`, `bulk_max_size: 4096`
+- Particionamento por `client_id` (hash) — preserva ordem por cliente
 
 ### 3. Consumer Stack
 
 #### 3.1 Elasticsearch Consumer (`logs-siger-consumer-es/`)
 Processamento e armazenamento de logs:
 
-**Logstash Sink:**
-- Consome do topic `logs_java_siger`
-- Consumer Group: `logstash-elastic-consumer`
+**Logstash Sink (pipelines paralelos via `pipelines.yml`):**
+- Pipeline `siger-java`: consome `logs_siger_java` → data stream `logs-java.siger` (2 workers)
+- Pipeline `siger-crash`: consome `logs_siger_crash` → data stream `logs-crash.siger` (1 worker)
+- Consumer groups: `logstash-elastic-siger-java`, `logstash-elastic-siger-crash`
 
 **Pipeline de Processamento:**
 1. **GROK Parsing** - Extrai campos estruturados:
@@ -179,46 +174,31 @@ Processamento e armazenamento de logs:
 **Kibana** (`:5601`)
 - Interface de visualização e análise
 
-#### 3.2 Discord Alert Consumer (`logs-siger-consumer-discord/`)
-Notificações em tempo real para Discord:
-
-**Logstash Discord:**
-- Consome do topic `logs_java_sigercrashreport`
-- Consumer Group: `logstash-discord-consumer`
-- **Filtro**: Apenas logs com `level = SEVERE`
-
-**Notificação:**
-- Envia alerta via Discord Webhook
-- Inclui: Cliente, Timestamp, Logger, Tipo de Erro, Mensagem
-- Bot: "SIGER Alert Bot"
-- Rate-limit aware (5 msgs/2s)
-
-**Webhook URL**: Configurado via variável de ambiente `DISCORD_WEBHOOK_URL`
+#### 3.2 Crash Reports
+O mesmo `logstash-sink` consome o tópico `logs_siger_crash` no pipeline `siger-crash` e grava na data stream `logs-crash.siger`.
 
 ## 🔄 Fluxo de Dados
 
 ### Fluxo Principal (Elasticsearch)
 ```
-[Arquivos .log] 
-    ↓ Filebeat (scan 30s, encoding CP1252, multiline parsing)
-[Kafka Topic: logs_java_siger]
-    ↓ Logstash Consumer
+[Arquivos SIGER_*] 
+    ↓ Filebeat (scan 10s, CP1252, multiline, lz4, queue 8192)
+[Kafka Topic: logs_siger_java]
+    ↓ Logstash Pipeline `siger-java` (2 workers)
 [Parse GROK → Extract Errors → Convert Dates → Cleanup]
     ↓ Elasticsearch Output
-[Data Stream: logs-java-siger]
+[Data Stream: logs-java.siger]
     ↓ Query API
 [Kibana Dashboard]
 ```
 
-### Fluxo de Alertas (Discord)
+### Fluxo de Crash
 ```
-[Arquivos CrashReport.log]
-    ↓ Filebeat (scan 30s, multiline parsing)
-[Kafka Topic: logs_java_sigercrashreport]
-    ↓ Logstash Discord Consumer
-[Filter: SEVERE only → Parse → Format Message]
-    ↓ HTTP Webhook
-[Discord Channel] 🚨 Alerta em tempo real!
+[Arquivos SigerCrashReport_*]
+    ↓ Filebeat
+[Kafka Topic: logs_siger_crash]
+    ↓ Logstash Pipeline `siger-crash`
+[Data Stream: logs-crash.siger]
 ```
 
 ## 📝 Formato de Log Esperado
@@ -284,22 +264,22 @@ Caused by: java.lang.NullPointerException
 ```
 kafka-log-pipeline/
 ├── kafka-cluster/                    # Cluster Kafka + ferramentas
+│   └── docker-compose.yml
+├── logs/                              # Logs SIGER organizados por cliente
+│   ├── 2114/                          # Cliente 2114
+│   └── 2398/                          # Cliente 2398
+├── logs-siger-producer-filebeat/     # Coleta de logs (1 container single-ingestor)
 │   ├── docker-compose.yml
-│   └── prometheus.yml
-├── logs-siger-producer-filebeat/     # Coleta de logs
-│   ├── docker-compose.yml
-│   ├── filebeat.yml
-│   ├── sample-logs-1/               # Logs cliente 1
-│   └── sample-logs-2/               # Logs cliente 2
+│   └── filebeat.yml
 ├── logs-siger-consumer-es/           # Processamento e armazenamento
 │   ├── docker-compose.yml
 │   └── logstash-sink/
+│       ├── config/
+│       │   └── pipelines.yml         # Pipelines paralelos
 │       └── pipeline/
-│           └── logstash.conf
-├── logs-siger-consumer-discord/      # Alertas Discord
-│   ├── docker-compose.yml
-│   ├── README.md
-│   └── logstash-discord/
+│           ├── siger-java.conf
+│           └── siger-crash.conf
+└── scripts/
 │       └── pipeline/
 │           └── logstash.conf
 └── scripts/                          # Scripts de automação
@@ -342,8 +322,6 @@ start-stack.bat
 - **Troubleshooting**: Busca e análise de erros com Kibana
 - **Auditoria**: Histórico completo de logs com timestamps precisos
 - **Monitoramento**: Dashboards de métricas e alertas
-- **Alertas Críticos**: Notificações instantâneas no Discord para erros SEVERE
-- **Equipes Distribuídas**: Alertas em canais Discord para resposta rápida
 
 ## 📚 Tecnologias
 

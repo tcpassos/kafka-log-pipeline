@@ -1,52 +1,99 @@
 filebeat.inputs:
-# Input para logs SIGER normais
-- type: filestream
-  id: logs-siger-java
-  enabled: true
-  paths:
-    - /usr/share/logs/SIGER_*_*_[0-9]*_[0-9]*_*.*
-  scan_frequency: 30s
-  close_inactive: 1m
-  clean_inactive: 72h
-  encoding: cp1252
-  fields:
-    topic: logs_java_siger
-    client_id: ${CLIENT_ID}
-  parsers:
-    - multiline:
-        pattern: '^[[:alnum:]]{4} [[:alnum:]]{6} [[:alnum:]]{6} \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}\s\w+\s+\S+\s(\s+|Caused by:|<)'
-        negate: false
-        match: after
+  # Logs SIGER (Java) — varre todos os clientes/sequencias do diretório raiz
+  - type: filestream
+    id: siger-java
+    enabled: true
+    paths:
+      - /usr/share/logs/*/RLS/java/SIGER_*
+      - /usr/share/logs/*/*/RLS/java/SIGER_*
+    prospector.scanner.recursive_glob: false
+    scan_frequency: 10s
+    close.on_state_change.inactive: 5m
+    harvester_limit: 500
+    encoding: cp1252
+    fields_under_root: true
+    fields:
+      topic: logs_siger_java
+    parsers:
+      - multiline:
+          pattern: '^[[:alnum:]]{4} [[:alnum:]]{6} [[:alnum:]]{6} \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}\s\w+\s+\S+\s(\s+|Caused by:|<)'
+          negate: false
+          match: after
 
-# Input para logs SigerCrashReport
-- type: filestream
-  id: logs-sigercrash-java
-  enabled: true
-  paths:
-    - /usr/share/logs/SigerCrashReport_*_*_[0-9]*_[0-9]*_*.*
-  scan_frequency: 30s
-  close_inactive: 1m
-  clean_inactive: 72h
-  encoding: cp1252
-  fields:
-    topic: logs_java_sigercrashreport
-    client_id: ${CLIENT_ID}
-  parsers:
-    - multiline:
-        pattern: '^[[:alnum:]]{4} [[:alnum:]]{6} [[:alnum:]]{6} \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}\s\w+\s+\S+\s(\s+|Caused by:|<)'
-        negate: false
-        match: after
+  # Logs SigerCrashReport — varre todos os clientes/sequencias do diretório raiz
+  - type: filestream
+    id: siger-crash
+    enabled: true
+    paths:
+      - /usr/share/logs/*/RLS/java/SigerCrashReport_*
+      - /usr/share/logs/*/*/RLS/java/SigerCrashReport_*
+    prospector.scanner.recursive_glob: false
+    scan_frequency: 10s
+    close.on_state_change.inactive: 5m
+    harvester_limit: 500
+    encoding: cp1252
+    fields_under_root: true
+    fields:
+      topic: logs_siger_crash
+    parsers:
+      - multiline:
+          pattern: '^[[:alnum:]]{4} [[:alnum:]]{6} [[:alnum:]]{6} \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}\s\w+\s+\S+\s(\s+|Caused by:|<)'
+          negate: false
+          match: after
+
+# Processors globais — extrai client_id/sequence direto do path
+# Cada dissect só executa quando o regex garante casamento (evita 'dissect_parsing_error' em log.flags)
+processors:
+  # Caminho com sequencia: /usr/share/logs/<client_id>/<sequence>/RLS/java/<filename>
+  - dissect:
+      when:
+        regexp:
+          log.file.path: '^/usr/share/logs/[^/]+/[^/]+/RLS/java/[^/]+$'
+      tokenizer: "/usr/share/logs/%{client_id}/%{sequence}/RLS/java/%{filename}"
+      field: "log.file.path"
+      target_prefix: ""
+  # Caminho sem sequencia: /usr/share/logs/<client_id>/RLS/java/<filename>
+  - dissect:
+      when:
+        regexp:
+          log.file.path: '^/usr/share/logs/[^/]+/RLS/java/[^/]+$'
+      tokenizer: "/usr/share/logs/%{client_id}/RLS/java/%{filename}"
+      field: "log.file.path"
+      target_prefix: ""
+  # Garante que 'sequence' sempre exista (para paths sem segmento de sequencia)
+  - add_fields:
+      when:
+        not:
+          has_fields: ["sequence"]
+      target: ""
+      fields:
+        sequence: "default"
+
+# Fila interna maior — melhora batching para Kafka
+queue.mem:
+  events: 16384
+  flush.min_events: 2048
+  flush.timeout: 5s
 
 # Desabilita a saída padrão para o Elasticsearch
 output.elasticsearch:
   enabled: false
 
-# Configura a saída para o Kafka com roteamento dinâmico por tópico
+# Saída para Kafka — particiona por client_id para preservar ordem por cliente
 output.kafka:
   enabled: true
   hosts:
     - broker:29092
     - broker2:29092
-  topic: '%{[fields.topic]}'
-  key: '%{[log.file.path]}'
+  topic: '%{[topic]}'
+  key: '%{[client_id]}'
   required_acks: 1
+  compression: lz4
+  max_message_bytes: 1000000
+  bulk_max_size: 4096
+  partition.hash:
+    reachable_only: true
+
+# Logging mais enxuto para PoC
+logging.level: info
+logging.metrics.enabled: false
