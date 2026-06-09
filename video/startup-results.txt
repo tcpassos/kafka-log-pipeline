@@ -1,0 +1,21 @@
+=== MEDIÇÃO DE STARTUP DO STACK ===
+
+PRIMEIRA EXECUÇÃO (download de imagens — não usar para slide)
+  Kafka Cluster : 175.4 s  (inflado: download das imagens Confluent ~5 GB)
+  Elasticsearch : 111.8 s
+  Kibana        : 130.2 s
+  Filebeat      :  18.8 s
+  TOTAL         : 324.5 s
+
+SEGUNDA EXECUÇÃO — cache quente (usar para slide e Cena 7)
+  Kafka Cluster :   5.2 s
+  Elasticsearch :  24.1 s
+  Kibana        :  63.4 s
+  Filebeat      :   6.8 s
+  TOTAL         :  75.4 s
+
+MÉTRICAS DE PICO (burst — stats-burst-peak.csv)
+  Logstash CPU pico    :  12.1 %  (amostra pequena; produção mediu >300%)
+  Logstash MEM         : 543 MiB / 768 MiB  (71% do teto do cgroup)
+  Elasticsearch CPU    :  44.6 %
+  Elasticsearch MEM    : 1.268 GiB / 1.27 GiB  (99.8% do teto do cgroup — impactante)
